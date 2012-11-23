@@ -63,11 +63,11 @@ class Camera():
         self.size = None
         self.oldimg = None
 
-    def tickloop(self,seconds,bucket):
+    def tickloop(self):
         self.tick()
         start = time.time()
-        while ((time.time() - start) < seconds):
-            bucket.feed(self.tick())
+        while ((time.time() - start) < self.core.windowtime):
+            self.core.bucket.feed(self.tick())
 
     def motiondetect(self,img):
         gray = cv.CreateImage(self.size, 8, 1)
@@ -123,14 +123,10 @@ class Camera():
 
 
 
-buckets = {}
-
 class AvgBucket():
-    def __init__(self,name):
+    def __init__(self):
         self.value = 0
-        self.num = 333
-        self.name = name
-        buckets[self.name] = self
+        self.num = 300 # 300 zeros
 
     def feed(self,value):
         self.num = self.num + 1
@@ -140,47 +136,193 @@ class AvgBucket():
         self.value = self.value + chunk * value
 
 
-ivor = TcpClient("10.10.5.109",43210)
-
-
-def show():
-    data = {}
-    for name in buckets:
-        data[name] = int(buckets[name].value)
-
-    return data
-
-def send():
-    ivor.tx(show())
-
-def sendloop():
-    while True:
-        send()
-        time.sleep(1)
-
-thread.start_new_thread(sendloop, ())
-
 class videoCore():
     def __init__(self):
         easycap = Device(1)
         self.camera1 = Camera(self,easycap,1)
         self.camera2 = Camera(self,easycap,2)
+        self.camera3 = Camera(self,easycap,3)
         self.windowtime = 10
+        self.valuesoverride = None
+        self.showscore = 1
 
     def start(self):
         thread.start_new_thread(self.loop, ())
 
     def loop(self):
         while True:
-            self.camera1.tickloop(self.windowtime,self.bucket)
-            self.camera2.tickloop(self.windowtime,self.bucket)
+            self.camera1.tickloop()
+            self.camera2.tickloop()
+            self.camera3.tickloop()
 
 cap = videoCore()
-cap.bucket = AvgBucket('bla')
+cap.bucket = AvgBucket()
+cap.bucket.team = 'total'
+cap.bucket.roundindex = 1
 cap.start()
 
-def bucket(name):
-    if not buckets.has_key(name):
-        AvgBucket(name)
+roundindex = 1
+teamindex = 0
 
-    cap.bucket = buckets[name]
+teams = {}
+
+def switchstate(roundindex,team):
+    if not teams.has_key(team):
+        print("initialized new team " + team)
+        teams[team] = {}
+
+    newbucket = AvgBucket()
+    newbucket.team = team
+    newbucket.roundindex = roundindex
+
+    cap.bucket = newbucket # capture to this bucket
+
+    teams[team][roundindex] = newbucket
+
+
+cap.text1 = "init"
+cap.text2 = "init"
+
+def show():
+    data = {}
+
+    def translate(name):
+        t = { 'elevate': 0, 'illectricity': 1, 'share': 2, 'terraneo': 3, 'total': 4 }
+        if not t.has_key(name):
+            return 5
+        return t[name]
+
+    data['state'] = state = translate(cap.bucket.team)
+    data['round'] = roundindex = cap.bucket.roundindex
+    data['fail'] = []
+
+    data['text1'] = cap.text1
+    data['text2'] = cap.text2
+    data['show'] = cap.showscore
+
+    if cap.valuesoverride:
+        data['values'] = cap.valuesoverride
+        return data
+
+    values = {}
+
+    for teamname in teams:
+        if teamname is not 'total':
+            if not teams[teamname].has_key(roundindex):
+                data['fail'].append(teamname + "-" + str(roundindex))
+                val = 0
+            else:
+                val = teams[teamname][roundindex].value
+
+            values[teamname] = int(val)
+
+
+
+    data['values'] = values
+
+    return data
+
+
+def averagebuckets(buckets):
+    total = 0
+    for bucket in buckets:
+        total = total + bucket.value
+    return round(total / len(buckets))
+
+
+def scenario():
+    cap.text1 = "RUNDA 1"
+    cap.text2 = "Hello Illectricity, tell me how you're doin'"
+    cap.showscore = 1
+    switchstate(0,'elevate')
+    yield
+    switchstate(0,'illectricity')
+    yield
+    switchstate(0,'share')
+    yield
+    switchstate(0,'terraneo')
+    yield
+    cap.text2 = "Rezultati"
+    switchstate(0,'total')
+    yield
+
+    cap.text1 = "RUNDA 2"
+    cap.text2 = "Dare To Be Original"
+    switchstate(1,'elevate')
+    yield
+    switchstate(1,'illectricity')
+    yield
+    switchstate(1,'share')
+    yield
+    switchstate(1,'terraneo')
+    yield
+    cap.text2 = "Rezultati"
+    switchstate(1,'total')
+    yield
+
+    cap.text1 = "RUNDA 3"
+    cap.text2 = "Mashed Potatos"
+    switchstate(2,'share')
+    yield
+    switchstate(2,'terraneo')
+    yield
+    switchstate(2,'elevate')
+    yield
+    switchstate(2,'illectricity')
+    yield
+    cap.text2 = "Rezultati"
+    switchstate(2,'total')
+    yield
+
+    cap.text1 = "RUNDA 4"
+    cap.text2 = "BASStardz"
+    switchstate(3,'terraneo')
+    yield
+    switchstate(3,'share')
+    yield
+    switchstate(3,'illectricity')
+    yield
+    switchstate(3,'elevate')
+    yield
+    cap.text2 = "Rezultati"
+    switchstate(3,'total')
+    yield
+
+    cap.text1 = "RUNDA 5"
+    cap.text2 = "Pop That Coochie"
+    switchstate(4,'illectricity')
+    yield
+    switchstate(4,'elevate')
+    yield
+    switchstate(4,'terraneo')
+    yield
+    switchstate(4,'share')
+    yield
+    cap.text2 = "Rezultati"
+    switchstate(4,'total')
+    yield
+    cap.text1 = "UKUPNI REZULTATI"
+    cap.text2 = ""
+
+    cap.valuesoverride = { 'terraneo': averagebuckets(teams['terraneo'].values()),
+                           'illectricity': averagebuckets(teams['illectricity'].values()),
+                           'share': averagebuckets(teams['share'].values()),
+                           'elevate': averagebuckets(teams['elevate'].values()) }
+
+    yield
+    cap.showscore = 0
+    cap.text1 = "RUNDA 6"
+    cap.text2 = "WINNER'S ROUND"
+
+ivor = TcpClient("10.10.10.2",43210)
+
+def send():
+    data = show()
+    ivor.tx(data)
+
+def sendloop():
+    while True:
+        send()
+        time.sleep(0.1)
+
+thread.start_new_thread(sendloop, ())
