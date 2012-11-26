@@ -15,6 +15,12 @@ class TcpClient():
         self.s.connect((ip, port))
         print "done"
 
+    def reconnect(self):
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print "reconnecting..."
+        self.s.connect((ip, port))
+        print "done"
+
     def tx(self,data):
         data = json.dumps(data)
         #print("sending",data)
@@ -97,6 +103,10 @@ class Camera():
 
         cv.Copy(color,img,thr)
 
+        cv.Copy(diff,movement,thr)
+        cv.ShowImage("movement" + str(self.channel),movement)
+
+
         writetext(img,'c' + str(self.channel) + ' a' + str(int(self.core.bucket.value)) + ' m' + str(movecount))
 
         cv.ShowImage("camera" + str(self.channel), img)
@@ -135,6 +145,12 @@ class AvgBucket():
         self.value = self.value * chunk * (self.num - 1)
         self.value = self.value + chunk * value
 
+    def __string__(self):
+        return str(self.value)
+
+    def __repr__(self):
+        return str(self.value)
+
 
 class videoCore():
     def __init__(self):
@@ -170,16 +186,16 @@ def switchstate(roundindex,team):
     if not teams.has_key(team):
         print("initialized new team " + team)
         teams[team] = {}
-
+        
     newbucket = AvgBucket()
     newbucket.team = team
     newbucket.roundindex = roundindex
-
+    
     cap.bucket = newbucket # capture to this bucket
-
+    
     teams[team][roundindex] = newbucket
-
-
+    
+    
 cap.text1 = "init"
 cap.text2 = "init"
 
@@ -231,20 +247,20 @@ def averagebuckets(buckets):
 
 
 def scenario():
-    cap.text1 = "RUNDA 1"
-    cap.text2 = "Hello Illectricity, tell me how you're doin'"
+    #cap.text1 = "RUNDA 1"
+    #cap.text2 = "Hello Illectricity, tell me how you're doin'"
     cap.showscore = 1
-    switchstate(0,'elevate')
-    yield
-    switchstate(0,'illectricity')
-    yield
-    switchstate(0,'share')
-    yield
-    switchstate(0,'terraneo')
-    yield
-    cap.text2 = "Rezultati"
-    switchstate(0,'total')
-    yield
+    #switchstate(0,'elevate')
+    #yield
+    #switchstate(0,'illectricity')
+    #yield
+    #switchstate(0,'share')
+    #yield
+    #switchstate(0,'terraneo')
+    #yield
+    #cap.text2 = "Rezultati"
+    #switchstate(0,'total')
+    #yield
 
     cap.text1 = "RUNDA 2"
     cap.text2 = "Dare To Be Original"
@@ -318,7 +334,11 @@ ivor = TcpClient("10.10.10.2",43210)
 
 def send():
     data = show()
-    ivor.tx(data)
+    try:
+        ivor.tx(data)
+    except (err):
+        ivor.reconnect()
+
 
 def sendloop():
     while True:
@@ -326,3 +346,7 @@ def sendloop():
         time.sleep(0.1)
 
 thread.start_new_thread(sendloop, ())
+
+
+def pause():
+    switchstate(0,'total')
